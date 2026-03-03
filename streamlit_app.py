@@ -1,89 +1,101 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import calendar
 
-# Sayfa Yapılandırması
-st.set_page_config(page_title="Kasa Bütçe v1.0", layout="wide")
+# --- SAYFA AYARLARI (v9.4 STİLİ) ---
+st.set_page_config(page_title="Kasa Finans v10.0", layout="wide")
 
-# Veri Saklama (Session State)
+# --- VERİ SAKLAMA ---
 if 'data' not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=['Tarih', 'Kategori', 'Açıklama', 'Gelir', 'Gider', 'Kart'])
+    st.session_state.data = pd.DataFrame(columns=['Tarih', 'Kategori', 'Açıklama', 'Gelir', 'Gider', 'Kart', 'Tekrarlanan'])
 
-# Sabit Gelir/Gider Tanımları
-SABIT_GELIRLER = ["Maaş", "Yan Haklar", "Ek Gelir"]
-SABIT_GIDERLER = ["Kira/Kredi", "Faturalar", "Mutfak", "Ulaşım", "Eğitim", "Diğer"]
+# --- AYARLAR VE KATEGORİLER ---
+SABIT_GELIRLER = ["Maaş", "Kira Geliri", "Ek Gelir"]
+SABIT_GIDERLER = ["Kira/Kredi", "Faturalar", "Mutfak", "Ulaşım", "Eğitim", "Eğlence", "Diğer"]
 
-st.title("📊 Kasa - Kişisel Finans Yönetimi")
+st.title("💳 Kasa - Akıllı Bütçe Yönetimi")
+st.markdown(f"**Güncel Tarih:** {datetime.now().strftime('%d %B %Y')}")
 
-# --- VERİ GİRİŞ ALANI ---
-with st.expander("Yeni İşlem Ekle", expanded=True):
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        tarih = st.date_input("İşlem Tarihi", datetime.now())
-        tur = st.selectbox("İşlem Türü", ["Gelir", "Gider", "Kredi Kartı"])
-    with col2:
-        kategoriler = SABIT_GELIRLER if tur == "Gelir" else SABIT_GIDERLER
-        kategori = st.selectbox("Kategori", kategoriler)
-        aciklama = st.text_input("Açıklama")
-    with col3:
-        tutar = st.number_input("Tutar (TL)", min_value=0.0, step=100.0)
-        ekle_btn = st.button("İşlemi Kaydet")
+# --- 1. BÖLÜM: VERİ GİRİŞİ ---
+with st.sidebar:
+    st.header("➕ Yeni İşlem")
+    tarih = st.date_input("İşlem Tarihi", datetime.now())
+    tur = st.selectbox("İşlem Türü", ["Gelir", "Gider", "Kredi Kartı"])
+    
+    kategoriler = SABIT_GELIRLER if tur == "Gelir" else SABIT_GIDERLER
+    kategori = st.selectbox("Kategori", kategoriler)
+    aciklama = st.text_input("Açıklama")
+    tutar = st.number_input("Tutar (TL)", min_value=0.0, step=50.0)
+    
+    # TEKRARLANAN İŞLEM ÖZELLİĞİ
+    tekrarlar = st.checkbox("Her Ay Tekrarla", help="Bu işlem her ay otomatik olarak bütçenize eklenir.")
+    
+    if st.button("Sisteme İşle", use_container_width=True):
+        if tutar > 0:
+            yeni_satir = {
+                'Tarih': pd.to_datetime(tarih),
+                'Kategori': kategori,
+                'Açıklama': aciklama,
+                'Gelir': tutar if tur == "Gelir" else 0,
+                'Gider': tutar if tur == "Gider" else 0,
+                'Kart': tutar if tur == "Kredi Kartı" else 0,
+                'Tekrarlanan': tekrarlar
+            }
+            st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni_satir])], ignore_index=True)
+            st.success("İşlem kaydedildi!")
+        else:
+            st.error("Lütfen tutar giriniz.")
 
-    if ekle_btn and tutar > 0:
-        yeni_veri = {
-            'Tarih': pd.to_datetime(tarih),
-            'Kategori': kategori,
-            'Açıklama': aciklama,
-            'Gelir': tutar if tur == "Gelir" else 0,
-            'Gider': tutar if tur == "Gider" else 0,
-            'Kart': tutar if tur == "Kredi Kartı" else 0
-        }
-        st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni_veri])], ignore_index=True)
-        st.success("Kaydedildi!")
-
-# --- ANALİZ ---
-st.divider()
+# --- 2. BÖLÜM: ANALİZ VE OTOMATİK HESAPLAMA ---
 aylar = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-secili_ay_ad = st.selectbox("Analiz Ayı", aylar, index=datetime.now().month - 1)
+secili_ay_ad = st.selectbox("İncelemek İstediğiniz Ay", aylar, index=datetime.now().month - 1)
 ay_no = aylar.index(secili_ay_ad) + 1
 
+# Veriyi işle
 df = st.session_state.data.copy()
+
+# Tekrarlanan işlemleri mevcut aya kopyala (Eğer o ayda henüz yoksa)
+tekrarlanan_df = df[df['Tekrarlanan'] == True].copy()
+if not tekrarlanan_df.empty:
+    for index, row in tekrarlanan_df.items():
+        # Basitleştirilmiş mantık: Tekrarlananları her ay varmış gibi hesaplamaya dahil et
+        pass
+
+# Mevcut ay verilerini filtrele
 if not df.empty:
     df['Tarih'] = pd.to_datetime(df['Tarih'])
-    df['Ay'] = df['Tarih'].dt.month
+    # Hem o ayda girilenler hem de tüm 'Tekrarlanan' işaretli olanları getir
+    aylik_df = df[(df['Tarih'].dt.month == ay_no) | (df['Tekrarlanan'] == True)]
     
-    # Mevcut Ay Verileri
-    mevcut_ay_df = df[df['Ay'] == ay_no]
+    # --- ÖZET KARTLARI ---
+    st.divider()
+    c1, c2, c3, c4 = st.columns(4)
     
-    # Özet Metrikleri
-    c1, c2, c3 = st.columns(3)
-    gelir_toplam = mevcut_ay_df['Gelir'].sum()
-    gider_toplam = mevcut_ay_df['Gider'].sum() + mevcut_ay_df['Kart'].sum()
+    toplam_gelir = aylik_df['Gelir'].sum()
+    toplam_gider = aylik_df['Gider'].sum()
+    toplam_kart = aylik_df['Kart'].sum()
+    net_kalan = toplam_gelir - (toplam_gider + toplam_kart)
     
-    c1.metric("Bu Ay Toplam Gelir", f"{gelir_toplam:,.2f} TL")
-    c2.metric("Bu Ay Toplam Gider", f"{gider_toplam:,.2f} TL")
-    c3.metric("Net Durum", f"{(gelir_toplam - gider_toplam):,.2f} TL")
+    c1.metric("Toplam Gelir", f"{toplam_gelir:,.2f} TL")
+    c2.metric("Nakit Gider", f"{toplam_gider:,.2f} TL")
+    c3.metric("Kredi Kartı", f"{toplam_kart:,.2f} TL")
+    c4.metric("Kalan Bakiye", f"{net_kalan:,.2f} TL", delta=f"{net_kalan:,.2f}")
 
-    # GRAFİK BÖLÜMÜ (Hata Veren Kısım Düzenlendi)
-    if not mevcut_ay_df.empty:
-        st.write("### Harcama Dağılımı")
+    # --- GÖRSEL ANALİZ ---
+    col_sol, col_sag = st.columns([2, 1])
+    
+    with col_sol:
+        st.subheader("📊 İşlem Detayları")
+        st.dataframe(aylik_df[['Tarih', 'Kategori', 'Açıklama', 'Gelir', 'Gider', 'Kart']], use_container_width=True)
         
-        # Sadece Gider ve Kart olan satırları al
-        harcamalar = mevcut_ay_df[(mevcut_ay_df['Gider'] > 0) | (mevcut_ay_df['Kart'] > 0)]
-        
-        if not harcamalar.empty:
-            # Kategoriye göre grupla ve toplam harcamayı (Nakit+Kart) hesapla
-            grafik_verisi = harcamalar.groupby('Kategori')[['Gider', 'Kart']].sum().sum(axis=1)
-            
-            # Eğer veri hala boş değilse grafiği çiz
-            if not grafik_verisi.empty:
-                st.plotly_chart = st.bar_chart(grafik_verisi) # pie_chart yerine daha stabil olan bar_chart deniyoruz
-            else:
-                st.info("Gösterilecek grafik verisi bulunamadı.")
+    with col_sag:
+        st.subheader("📈 Harcama Dağılımı")
+        grafik_data = aylik_df[aylik_df['Gider'] + aylik_df['Kart'] > 0]
+        if not grafik_data.empty:
+            pasta = grafik_data.groupby('Kategori')[['Gider', 'Kart']].sum().sum(axis=1)
+            st.bar_chart(pasta) # Stabilite için bar_chart
         else:
-            st.info("Bu ay için harcama kaydı yok.")
-
-        st.write("### İşlem Detayları")
-        st.dataframe(mevcut_ay_df, use_container_width=True)
+            st.info("Harcama verisi bulunamadı.")
 else:
-    st.warning("Henüz hiç veri girmediniz. Lütfen yukarıdan işlem ekleyin.")
+    st.info("Henüz veri girişi yapılmadı. Sol taraftaki menüden başlayabilirsiniz.")
