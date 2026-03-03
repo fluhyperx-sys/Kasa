@@ -90,7 +90,22 @@ if not mevcut_ay_df.empty:
     gider_ozet = mevcut_ay_df[mevcut_ay_df['Gider'] > 0].groupby('Kategori')['Gider'].sum()
     if not gider_ozet.empty:
         st.pie_chart(gider_ozet)
+    # Grafik ve Detaylar (Hata vermemesi için güncellendi)
+if not mevcut_ay_df.empty:
+    st.write("### Harcama Dağılımı")
     
+    # Sadece Gider ve Kredi Kartı olanları filtrele
+    harcama_df = mevcut_ay_df[(mevcut_ay_df['Gider'] > 0) | (mevcut_ay_df['Kart'] > 0)]
+    
+    if not harcama_df.empty:
+        # Gider ve Kart toplamını kategori bazlı birleştir
+        gider_ozet = harcama_df.groupby('Kategori')[['Gider', 'Kart']].sum().sum(axis=1)
+        st.pie_chart(gider_ozet)
+    else:
+        st.info("Bu ay için henüz bir harcama (Gider veya Kart) kaydı bulunmuyor.")
+    
+    st.write("### İşlem Kayıtları")
+    st.dataframe(mevcut_ay_df, use_container_width=True)
     st.write("### İşlem Kayıtları")
     st.dataframe(mevcut_ay_df, use_container_width=True)
 else:
