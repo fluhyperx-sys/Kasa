@@ -4,7 +4,7 @@ from datetime import datetime, date
 import calendar
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Kasa Pro v15.0", layout="wide")
+st.set_page_config(page_title="Kasa Pro v15.1", layout="wide")
 
 # --- TÜRKÇE AYARLARI VE KATEGORİLER ---
 TR_AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -21,7 +21,7 @@ def get_monthly_recurring(year, month):
     items = []
     num_days = calendar.monthrange(year, month)[1]
     
-    # Salı ve Cuma Günleri
+    # Salı ve Cuma Günleri (Pazar ve Haftalık)
     for d in range(1, num_days + 1):
         curr = date(year, month, d)
         if curr.weekday() == 1: # Salı
@@ -41,7 +41,7 @@ def get_monthly_recurring(year, month):
         if d <= num_days:
             items.append({'id': f'auto_{k}_{month}_{d}', 'Tarih': date(year, month, d), 'Kategori': k, 'Açıklama': a, 'Gelir': t if tur == 'Gelir' else 0, 'Gider': t if tur == 'Gider' else 0, 'Kart': 0, 'Tur': tur})
 
-    # Enpara Kr
+    # Enpara Kr (Eylül 2026'ya kadar)
     if date(year, month, 1) <= date(2026, 9, 19):
         items.append({'id': f'auto_enp_{month}', 'Tarih': date(year, month, 19), 'Kategori': 'Enpara Kr', 'Açıklama': 'Kredi', 'Gider': 23627.83, 'Gelir': 0, 'Kart': 0, 'Tur': 'Gider'})
     
@@ -63,11 +63,11 @@ with st.sidebar:
             st.rerun()
 
 # --- ANA EKRAN ---
-st.title("🏦 Kasa Pro v15.0")
+st.title("🏦 Kasa Pro v15.1")
 secili_ay_ad = st.selectbox("İnceleme Ayı", TR_AYLAR, index=date.today().month - 1)
 ay_idx = TR_AYLAR.index(secili_ay_ad) + 1
 
-# Veri Birleştirme ve Devir Hesabı
+# Veri Birleştirme
 auto_df = get_monthly_recurring(2026, ay_idx)
 man_df = st.session_state.manual_data.copy()
 if not man_df.empty:
@@ -83,39 +83,38 @@ c2.metric("Nakit Gider", f"{ay_gider:,.2f} TL")
 c3.metric("Kart Harcaması", f"{ay_kart:,.2f} TL")
 c4.metric("Ay Sonu Kalan", f"{(ay_gelir - ay_gider - ay_kart):,.2f} TL")
 
-# --- SEKME YAPISI (v13 Benzeri) ---
-tab1, tab2, tab3 = st.tabs(["💰 Gelirler", "💸 Nakit Giderler", "💳 Kredi Kartı"])
-
+# --- TABLO OLUŞTURMA FONKSİYONU ---
 def tablo_olustur(df_subset, tur_etiketi):
     if df_subset.empty:
         st.info(f"Bu ay için {tur_etiketi} kaydı bulunmuyor.")
         return
 
     # Başlıklar
-    h1, h2, h3, h4 = st.columns([1, 2, 1, 1.5])
+    h1, h2, h3, h4 = st.columns([1, 2, 1, 1])
     h1.write("**Tarih**")
     h2.write("**Açıklama**")
     h3.write("**Tutar**")
     h4.write("**İşlemler**")
 
     for idx, row in df_subset.iterrows():
-        c1, c2, c3, c4 = st.columns([1, 2, 1, 1.5])
+        c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
         tutar = max(row['Gelir'], row['Gider'], row['Kart'])
         
         if st.session_state.edit_id == row['id']:
             with c2: edit_acik = st.text_input("Düzenle", row['Açıklama'], key=f"edit_ac_{row['id']}")
             with c3: edit_tut = st.number_input("Tutar", value=float(tutar), key=f"edit_tu_{row['id']}")
             with c4:
-                if st.button("Kaydet ✅", key=f"save_{row['id']}"):
+                col_s, col_i = st.columns(2)
+                if col_s.button("✅", key=f"save_{row['id']}"):
                     if "auto" in str(row['id']):
-                        st.warning("Sabit ödemeler otomatik hesaplanır. Manuel girişi düzenleyebilirsiniz.")
+                        st.warning("Sabit ödeme düzenlenemez.")
                     else:
                         m_idx = st.session_state.manual_data[st.session_state.manual_data['id'] == row['id']].index[0]
                         st.session_state.manual_data.at[m_idx, 'Açıklama'] = edit_acik
                         st.session_state.manual_data.at[m_idx, row['Tur']] = edit_tut
                         st.session_state.edit_id = None
                         st.rerun()
-                if st.button("İptal ❌", key=f"cancel_{row['id']}"):
+                if col_i.button("❌", key=f"cancel_{row['id']}"):
                     st.session_state.edit_id = None
                     st.rerun()
         else:
@@ -134,4 +133,14 @@ def tablo_olustur(df_subset, tur_etiketi):
                         st.session_state.manual_data = st.session_state.manual_data[st.session_state.manual_data['id'] != row['id']]
                         st.rerun()
 
-with tab1: tablo
+# --- SEKME YAPISI ---
+tab1, tab2, tab3 = st.tabs(["💰 Gelirler", "💸 Nakit Giderler", "💳 Kredi Kartı"])
+
+with tab1:
+    tablo_olustur(full_df[full_df['Tur'] == 'Gelir'], "gelir")
+
+with tab2:
+    tablo_olustur(full_df[full_df['Tur'] == 'Gider'], "gider")
+
+with tab3:
+    tablo_olustur(full_df[full_df['Tur'] == 'Kredi Kartı'], "kart harcaması")
